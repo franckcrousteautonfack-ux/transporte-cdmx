@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Dónde va mi transporte</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600&display=swap">
+<style>
+:root{--bg:#EDF1F3;--ink:#14212B;--mut:#5B6B77;--card:#FFFFFF;--line:#CBD5DB;--map:#DCE5EA;--grid:#C3D0D7;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0F181F;--ink:#E8EEF2;--mut:#93A3AF;--card:#17232C;--line:#2A3A46;--map:#1B2A34;--grid:#263640}}
+:root[data-theme="dark"]{--bg:#0F181F;--ink:#E8EEF2;--mut:#93A3AF;--card:#17232C;--line:#2A3A46;--map:#1B2A34;--grid:#263640}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 Barlow,system-ui,sans-serif}
+main{max-width:520px;margin:0 auto;padding:16px}
+h1{font:700 34px/1 "Barlow Condensed",system-ui,sans-serif;margin:8px 0 4px;letter-spacing:.2px}
+.sub{color:var(--mut);margin:0 0 14px}
+.map{background:var(--map);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.map svg{display:block;width:100%;height:auto}
+.lm{font:500 9px Barlow,sans-serif;fill:var(--mut)}
+.status{font-size:14px;color:var(--mut);margin:8px 2px 16px}
+h2{font:700 20px/1.1 "Barlow Condensed",system-ui,sans-serif;margin:18px 0 8px}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{display:inline-flex;align-items:center;gap:8px;padding:9px 13px;border:1.5px solid var(--line);border-radius:999px;background:var(--card);color:var(--ink);font:600 15px Barlow,sans-serif;cursor:pointer}
+.chip i{width:12px;height:12px;border-radius:50%;display:inline-block}
+.chip[aria-pressed="true"]{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
+input{width:100%;padding:12px;border:1.5px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink);font:500 16px Barlow,sans-serif;margin-top:10px}
+.go{width:100%;margin-top:12px;padding:15px;border:0;border-radius:8px;background:var(--ink);color:var(--bg);font:700 20px "Barlow Condensed",sans-serif;cursor:pointer}
+.go[data-on="1"]{background:#C8102E;color:#fff}
+:focus-visible{outline:3px solid #0B87C9;outline-offset:2px}
+.list{margin:0;padding:0;list-style:none}
+.list li{display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--line)}
+.list li b{font-weight:600}
+.note{font-size:14px;color:var(--mut);margin-top:6px}
+</style>
+</head>
+<body>
+<main>
+<h1>Dónde va mi transporte</h1>
+<p class="sub">CDMX y Estado de México. Comparte tu avance y mira por dónde van otras personas.</p>
+
+<div class="map"><svg id="map" viewBox="0 0 300 346" role="img" aria-label="Mapa esquemático de CDMX y Estado de México con puntos de transporte"></svg></div>
+<p class="status" id="status" aria-live="polite">Conectando…</p>
+
+<h2>¿En qué vas?</h2>
+<div class="chips" id="chips"></div>
+<input id="line" type="text" maxlength="20" placeholder="Línea o ruta (por ejemplo, Línea 3)" aria-label="Línea o ruta">
+<button class="go" id="go" data-on="0">Compartir mi avance</button>
+<p class="note" id="msg"></p>
+
+<h2>En movimiento ahora</h2>
+<ul class="list" id="counts"></ul>
+
+<h2>Datos oficiales</h2>
+<p class="note">Estado del servicio y llegadas de Metrobús en vivo se conectarán en la siguiente versión. Metro, Tren Ligero y Suburbano no publican la posición de sus trenes, por eso el avance viene de personas que lo comparten.</p>
+</main>
+<script>
+var SYS=[
+{id:"metro",n:"Metro",c:"#F26B1D"},{id:"mb",n:"Metrobús",c:"#C8102E"},{id:"tl",n:"Tren Ligero",c:"#2E9E5B"},
+{id:"sub",n:"Suburbano",c:"#7A3FA0"},{id:"cb",n:"Cablebús",c:"#0B87C9"},{id:"edo",n:"Otro en Edomex",c:"#8A8F00"}];
+var LM=[["Zócalo",19.4326,-99.1332],["Pantitlán",19.4153,-99.0722],["Observatorio",19.3985,-99.2008],
+["Indios Verdes",19.495,-99.119],["Taxqueña",19.3436,-99.1426],["Buenavista",19.4466,-99.1523]];
+var B={n:19.75,s:19.15,w:-99.40,e:-98.85},W=300,H=346;
+var NS="http://www.w3.org/2000/svg";
+var sys="metro",sharing=false,watchId=null,me=null,room=null,peers=[];
+function px(lat,lng){var x=(lng-B.w)/(B.e-B.w)*W,y=(B.n-lat)/(B.n-B.s)*H;
+return [Math.max(4,Math.min(W-4,x)),Math.max(4,Math.min(H-4,y))];}
+function sysOf(id){return SYS.filter(function(s){return s.id===id})[0];}
+function el(t,a,txt){var e=document.createElementNS(NS,t);for(var k in a)e.setAttribute(k,a[k]);if(txt)e.textContent=txt;return e;}
+function valid(p){return p&&sysOf(p.sys)&&typeof p.lat==="number"&&typeof p.lng==="number";}
+function render(){
+var svg=document.getElementById("map");svg.textContent="";
+for(var i=1;i<6;i++){svg.appendChild(el("line",{x1:i*50,y1:0,x2:i*50,y2:H,stroke:"var(--grid)","stroke-width":.6}));}
+for(var j=1;j<7;j++){svg.appendChild(el("line",{x1:0,y1:j*50,x2:W,y2:j*50,stroke:"var(--grid)","stroke-width":.6}));}
+LM.forEach(function(l){var p=px(l[1],l[2]);svg.appendChild(el("circle",{cx:p[0],cy:p[1],r:2.5,fill:"var(--mut)"}));
+svg.appendChild(el("text",{x:p[0]+5,y:p[1]+3,"class":"lm"},l[0]));});
+var counts={};
+peers.forEach(function(pr){var p=pr.presence;if(!valid(p)||pr.isMe)return;
+var s=sysOf(p.sys),q=px(p.lat,p.lng);counts[s.id]=(counts[s.id]||0)+1;
+svg.appendChild(el("circle",{cx:q[0],cy:q[1],r:6,fill:s.c,stroke:"#fff","stroke-width":1.5}));});
+if(me){var s=sysOf(sys),q=px(me.lat,me.lng);
+svg.appendChild(el("circle",{cx:q[0],cy:q[1],r:13,fill:s.c,opacity:.25}));
+svg.appendChild(el("circle",{cx:q[0],cy:q[1],r:7,fill:s.c,stroke:"#fff","stroke-width":2}));
+svg.appendChild(el("text",{x:q[0]+10,y:q[1]-8,"class":"lm",style:"font-weight:700;fill:var(--ink)"},"Tú"));}
+var ul=document.getElementById("counts");ul.textContent="";
+var tot=0;SYS.forEach(function(s){if(counts[s.id]){tot+=counts[s.id];var li=document.createElement("li");
+var a=document.createElement("b");a.textContent=s.n;var b=document.createElement("span");
+b.textContent=counts[s.id]+(counts[s.id]===1?" persona":" personas");li.appendChild(a);li.appendChild(b);ul.appendChild(li);}});
+if(!tot){var li=document.createElement("li");li.textContent="Nadie comparte su avance por ahora.";ul.appendChild(li);}
+document.getElementById("status").textContent=room
+?"Conectado: ves a quienes comparten en este momento."
+:"Sin conexión con el servidor. Reintentando…";
+}
+function chips(){var c=document.getElementById("chips");c.textContent="";
+SYS.forEach(function(s){var b=document.createElement("button");b.className="chip";b.type="button";
+b.setAttribute("aria-pressed",String(s.id===sys));var d=document.createElement("i");d.style.background=s.c;
+b.appendChild(d);b.appendChild(document.createTextNode(s.n));
+b.onclick=function(){sys=s.id;chips();push();render();};c.appendChild(b);});}
+var myId=Array.from(crypto.getRandomValues(new Uint8Array(12))).map(function(x){return x.toString(16).padStart(2,"0")}).join("");
+function post(path,body){return fetch(path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}).catch(function(){});}
+function push(){
+if(sharing&&me){post("/api/share",{id:myId,sys:sys,line:document.getElementById("line").value.slice(0,20),lat:me.lat,lng:me.lng});}
+else{post("/api/stop",{id:myId});}}
+function msg(t){document.getElementById("msg").textContent=t;}
+function setBtn(){var g=document.getElementById("go");g.dataset.on=sharing?"1":"0";
+g.textContent=sharing?"Dejar de compartir":"Compartir mi avance";}
+document.getElementById("go").onclick=function(){
+if(sharing){sharing=false;if(watchId!==null)navigator.geolocation.clearWatch(watchId);watchId=null;me=null;push();setBtn();msg("");render();return;}
+if(!navigator.geolocation){msg("Tu navegador no permite usar la ubicación.");return;}
+msg("Buscando tu ubicación…");sharing=true;setBtn();
+watchId=navigator.geolocation.watchPosition(function(pos){
+me={lat:Math.round(pos.coords.latitude*1000)/1000,lng:Math.round(pos.coords.longitude*1000)/1000};
+msg("Compartiendo con ubicación aproximada (unos 100 m).");push();render();},
+function(){sharing=false;watchId=null;setBtn();msg("No se pudo obtener la ubicación. Activa el permiso de ubicación e inténtalo otra vez.");},
+{enableHighAccuracy:true,maximumAge:5000});};
+document.getElementById("line").addEventListener("change",push);
+chips();setBtn();render();
+function poll(){fetch("/api/live?id="+myId).then(function(r){return r.json()}).then(function(d){
+room=true;peers=d.map(function(p){return {presence:p,isMe:!!p.me}});render();}).catch(function(){room=false;render();});}
+poll();setInterval(poll,5000);
+setInterval(function(){if(sharing&&me)push();},15000);
+</script>
+</body>
+</html>

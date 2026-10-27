@@ -1,0 +1,9 @@
+{
+  "name": "transporte-cdmx",
+  "version": "1.0.0",
+  "description": "Avance en vivo del transporte compartido por usuarios en CDMX y Estado de México",
+  "main": "server.js",
+  "scripts": { "start": "node server.js" },
+  "engines": { "node": ">=18" },
+  "license": "MIT"
+}
