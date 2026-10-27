@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Dónde va mi transporte</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="/leaflet/leaflet.css">
 <style>
 :root{--bg:#EDF1F3;--ink:#14212B;--mut:#5B6B77;--card:#FFFFFF;--line:#CBD5DB;--map:#DCE5EA;--grid:#C3D0D7;
 box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
@@ -17,8 +18,7 @@ main{max-width:520px;margin:0 auto;padding:16px}
 h1{font:700 34px/1 "Barlow Condensed",system-ui,sans-serif;margin:8px 0 4px;letter-spacing:.2px}
 .sub{color:var(--mut);margin:0 0 14px}
 .map{background:var(--map);border:1px solid var(--line);border-radius:10px;overflow:hidden}
-.map svg{display:block;width:100%;height:auto}
-.lm{font:500 9px Barlow,sans-serif;fill:var(--mut)}
+.map #map{height:62vh;min-height:340px;width:100%}
 .status{font-size:14px;color:var(--mut);margin:8px 2px 16px}
 h2{font:700 20px/1.1 "Barlow Condensed",system-ui,sans-serif;margin:18px 0 8px}
 .chips{display:flex;flex-wrap:wrap;gap:8px}
@@ -40,7 +40,7 @@ input{width:100%;padding:12px;border:1.5px solid var(--line);border-radius:8px;b
 <h1>Dónde va mi transporte</h1>
 <p class="sub">CDMX y Estado de México. Comparte tu avance y mira por dónde van otras personas.</p>
 
-<div class="map"><svg id="map" viewBox="0 0 300 346" role="img" aria-label="Mapa esquemático de CDMX y Estado de México con puntos de transporte"></svg></div>
+<div class="map"><div id="map" role="application" aria-label="Mapa de CDMX y Estado de México"></div></div>
 <p class="status" id="status" aria-live="polite">Conectando…</p>
 
 <h2>¿En qué vas?</h2>
@@ -55,6 +55,7 @@ input{width:100%;padding:12px;border:1.5px solid var(--line);border-radius:8px;b
 <h2>Datos oficiales</h2>
 <p class="note">Estado del servicio y llegadas de Metrobús en vivo se conectarán en la siguiente versión. Metro, Tren Ligero y Suburbano no publican la posición de sus trenes, por eso el avance viene de personas que lo comparten.</p>
 </main>
+<script src="/leaflet/leaflet.js"></script>
 <script>
 var SYS=[
 {id:"metro",n:"Metro",c:"#F26B1D"},{id:"mb",n:"Metrobús",c:"#C8102E"},{id:"tl",n:"Tren Ligero",c:"#2E9E5B"},
@@ -70,19 +71,16 @@ function sysOf(id){return SYS.filter(function(s){return s.id===id})[0];}
 function el(t,a,txt){var e=document.createElementNS(NS,t);for(var k in a)e.setAttribute(k,a[k]);if(txt)e.textContent=txt;return e;}
 function valid(p){return p&&sysOf(p.sys)&&typeof p.lat==="number"&&typeof p.lng==="number";}
 function render(){
-var svg=document.getElementById("map");svg.textContent="";
-for(var i=1;i<6;i++){svg.appendChild(el("line",{x1:i*50,y1:0,x2:i*50,y2:H,stroke:"var(--grid)","stroke-width":.6}));}
-for(var j=1;j<7;j++){svg.appendChild(el("line",{x1:0,y1:j*50,x2:W,y2:j*50,stroke:"var(--grid)","stroke-width":.6}));}
-LM.forEach(function(l){var p=px(l[1],l[2]);svg.appendChild(el("circle",{cx:p[0],cy:p[1],r:2.5,fill:"var(--mut)"}));
-svg.appendChild(el("text",{x:p[0]+5,y:p[1]+3,"class":"lm"},l[0]));});
+layer.clearLayers();
 var counts={};
+function tip(t){var d=document.createElement("span");d.textContent=t;return d;}
 peers.forEach(function(pr){var p=pr.presence;if(!valid(p)||pr.isMe)return;
-var s=sysOf(p.sys),q=px(p.lat,p.lng);counts[s.id]=(counts[s.id]||0)+1;
-svg.appendChild(el("circle",{cx:q[0],cy:q[1],r:6,fill:s.c,stroke:"#fff","stroke-width":1.5}));});
-if(me){var s=sysOf(sys),q=px(me.lat,me.lng);
-svg.appendChild(el("circle",{cx:q[0],cy:q[1],r:13,fill:s.c,opacity:.25}));
-svg.appendChild(el("circle",{cx:q[0],cy:q[1],r:7,fill:s.c,stroke:"#fff","stroke-width":2}));
-svg.appendChild(el("text",{x:q[0]+10,y:q[1]-8,"class":"lm",style:"font-weight:700;fill:var(--ink)"},"Tú"));}
+var s=sysOf(p.sys);counts[s.id]=(counts[s.id]||0)+1;
+L.circleMarker([p.lat,p.lng],{radius:9,color:"#fff",weight:2,fillColor:s.c,fillOpacity:1}).addTo(layer).bindTooltip(tip(s.n+(p.line?" · "+p.line:"")));});
+if(me){var s=sysOf(sys);
+L.circleMarker([me.lat,me.lng],{radius:18,stroke:false,fillColor:s.c,fillOpacity:.25}).addTo(layer);
+L.circleMarker([me.lat,me.lng],{radius:9,color:"#fff",weight:2,fillColor:s.c,fillOpacity:1}).addTo(layer).bindTooltip(tip("Tú"),{permanent:true,direction:"right"});
+if(!centered){map.setView([me.lat,me.lng],14);centered=true;}}
 var ul=document.getElementById("counts");ul.textContent="";
 var tot=0;SYS.forEach(function(s){if(counts[s.id]){tot+=counts[s.id];var li=document.createElement("li");
 var a=document.createElement("b");a.textContent=s.n;var b=document.createElement("span");
@@ -115,6 +113,9 @@ msg("Compartiendo con ubicación aproximada (unos 100 m).");push();render();},
 function(){sharing=false;watchId=null;setBtn();msg("No se pudo obtener la ubicación. Activa el permiso de ubicación e inténtalo otra vez.");},
 {enableHighAccuracy:true,maximumAge:5000});};
 document.getElementById("line").addEventListener("change",push);
+var map=L.map("map",{minZoom:9,maxBounds:[[19.0,-99.5],[19.8,-98.7]]}).setView([19.4326,-99.1332],11);
+L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"© OpenStreetMap contributors"}).addTo(map);
+var layer=L.layerGroup().addTo(map),centered=false;
 chips();setBtn();render();
 function poll(){fetch("/api/live?id="+myId).then(function(r){return r.json()}).then(function(d){
 room=true;peers=d.map(function(p){return {presence:p,isMe:!!p.me}});render();}).catch(function(){room=false;render();});}

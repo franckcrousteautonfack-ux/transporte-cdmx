@@ -11,6 +11,8 @@ const TTL = 60000;
 const MAX_ENTRIES = 5000;
 const MAX_REQ_PER_MIN = 120;
 
+const TYPES = { ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".png": "image/png" };
+const LEAFLET_DIR = path.join(__dirname, "public", "leaflet");
 const live = new Map();
 const hits = new Map();
 const page = fs.readFileSync(path.join(__dirname, "public", "index.html"));
@@ -20,7 +22,7 @@ const SECURITY = {
   "Referrer-Policy": "no-referrer",
   "Permissions-Policy": "geolocation=(self)",
   "Content-Security-Policy":
-    "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src 'self'; img-src 'self' data:"
+    "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src 'self'; img-src 'self' data: https://tile.openstreetmap.org"
 };
 
 function reply(res, code, body, type) {
@@ -61,6 +63,15 @@ http.createServer((req, res) => {
 
   if (req.method === "GET" && (url.pathname === "/" || url.pathname === "/index.html")) {
     return reply(res, 200, page, "text/html; charset=utf-8");
+  }
+
+  if (req.method === "GET" && url.pathname.startsWith("/leaflet/")) {
+    const file = path.join(__dirname, "public", path.normalize(decodeURIComponent(url.pathname)));
+    if (file.indexOf(LEAFLET_DIR) !== 0) return reply(res, 404, { error: "no encontrado" });
+    return fs.readFile(file, (e, d) => {
+      if (e) return reply(res, 404, { error: "no encontrado" });
+      reply(res, 200, d, TYPES[path.extname(file)] || "application/octet-stream");
+    });
   }
 
   if (req.method === "GET" && url.pathname === "/api/live") {
